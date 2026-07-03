@@ -104,6 +104,10 @@ h2 { font-size: 1.05rem; margin: 24px 0 10px; color: var(--green-dark); }
 .badge-sold { background: #fdeecb; color: var(--gold); }
 .badge-deceased { background: #f1e0de; color: var(--danger); }
 .badge-lost { background: #eee; color: var(--text-muted); }
+.badge-theft { background: #eee; color: var(--danger); }
+.badge-zakat { background: #e0ecf1; color: #2f6a82; }
+.badge-gift { background: #e0ecf1; color: #2f6a82; }
+.badge-slaughtered { background: #f1e0de; color: var(--tan); }
 
 /* Forms */
 .field-label { display: block; margin: 14px 0 6px; font-weight: 600; font-size: 0.9rem; color: var(--green-dark); }
@@ -153,3 +157,28 @@ textarea.text-input { min-height: 80px; resize: vertical; }
 @media (min-width: 640px) {
   .bottom-nav { max-width: 560px; left: 50%; transform: translateX(-50%); border-left: 1px solid var(--border); border-right: 1px solid var(--border); border-radius: 14px 14px 0 0; }
 }
+
+/* Money */
+.money-grid { grid-template-columns: 1fr; }
+.money-card { align-items: stretch; text-align: left; cursor: default; gap: 6px; }
+.money-card .species-icon, .money-card .species-label { align-self: center; }
+.money-row { display: flex; justify-content: space-between; font-size: 0.9rem; padding-top: 4px; }
+.money-row.money-net { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 8px; font-weight: 700; }
+.money-amt { font-weight: 700; }
+.money-in { color: var(--green-dark); }
+.money-out { color: var(--danger); }
+
+.expense-row { align-items: center; }
+.expense-row .timeline-text { flex: 1; }
+.expense-row .money-amt { white-space: nowrap; }
+
+.due-badge { font-size: 0.75rem; font-weight: 700; white-space: nowrap; color: var(--text-muted); }
+.due-badge.due-upcoming { color: var(--gold); }
+.due-badge.due-overdue { color: var(--danger); }
+
+.alert-banner {
+  display: block; width: 100%; text-align: left; border: none; border-radius: 10px;
+  padding: 12px 14px; margin-bottom: 10px; font-size: 0.9rem; cursor: pointer;
+}
+.alert-banner.alert-upcoming { background: #fdeecb; color: #7a5b0a; }
+.alert-banner.alert-overdue { background: #f1e0de; color: var(--danger); }

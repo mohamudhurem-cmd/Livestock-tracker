@@ -47,8 +47,11 @@ Screens.animalForm = function (container, params) {
           <option value="unknown" ${animal?.sex === 'unknown' ? 'selected' : ''}>Unknown</option>
         </select>
 
-        <label class="field-label">Owner *</label>
-        <select class="select-input" name="owner" required>${ownerOptions}</select>
+        <div id="owner-field-wrap">
+          <label class="field-label">Owner *</label>
+          <select class="select-input" name="owner" required>${ownerOptions}</select>
+        </div>
+        <p id="owner-fixed-note" class="subtitle" style="display:none; margin: 14px 0 0;"></p>
 
         <label class="field-label">Birth date</label>
         <input class="text-input" type="date" name="birthDate" value="${animal?.birthDate || ''}" />
@@ -77,14 +80,42 @@ Screens.animalForm = function (container, params) {
 
   container.querySelectorAll('[data-nav]').forEach(n => n.addEventListener('click', () => { window.location.hash = n.getAttribute('data-nav'); }));
 
+  function fixedOwnerFor(species) {
+    if (species === 'camel') return CAMEL_SOLE_OWNER;
+    if (species === 'goat' || species === 'sheep') return GOAT_SHEEP_JOINT_OWNER;
+    return null;
+  }
+
+  function syncOwnerField() {
+    const species = qs('animal-form').querySelector('[name="species"]').value;
+    const fixed = fixedOwnerFor(species);
+    const wrap = qs('owner-field-wrap');
+    const note = qs('owner-fixed-note');
+    const ownerSelect = wrap.querySelector('[name="owner"]');
+    if (fixed) {
+      wrap.style.display = 'none';
+      ownerSelect.required = false;
+      note.style.display = '';
+      note.textContent = `Owner: ${fixed} (fixed — not individually owned within this species)`;
+    } else {
+      wrap.style.display = '';
+      ownerSelect.required = true;
+      note.style.display = 'none';
+    }
+  }
+  qs('animal-form').querySelector('[name="species"]').addEventListener('change', syncOwnerField);
+  syncOwnerField();
+
   qs('animal-form').addEventListener('submit', (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
+    const species = fd.get('species');
+    const fixedOwner = fixedOwnerFor(species);
     const data = {
       tag: fd.get('tag').trim(),
-      species: fd.get('species'),
+      species,
       sex: fd.get('sex'),
-      owner: fd.get('owner'),
+      owner: fixedOwner || fd.get('owner'),
       birthDate: fd.get('birthDate') || null,
       birthEstimated: fd.get('birthEstimated') === 'on',
       motherTag: fd.get('motherTag').trim(),

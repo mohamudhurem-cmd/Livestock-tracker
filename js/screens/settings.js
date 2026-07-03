@@ -36,6 +36,10 @@ Screens.settings = function (container) {
           <button class="btn btn-outline" id="import-replace">Replace All Data</button>
         </div>
 
+        <h2>Danger Zone</h2>
+        <p class="subtitle">Clears all animals, events, expenses, income, and vaccination records on this device. Owners list is kept. Export a backup first if you're not sure.</p>
+        <button class="btn btn-danger" id="reset-data-btn">Reset All Data</button>
+
         <h2>About</h2>
         <p class="subtitle">Livestock Tracker works fully offline. Data lives only on this device unless you export a backup.</p>
       </div>
@@ -97,6 +101,13 @@ Screens.settings = function (container) {
 
     qs('import-merge').addEventListener('click', () => doImport('merge'));
     qs('import-replace').addEventListener('click', () => doImport('replace'));
+
+    qs('reset-data-btn').addEventListener('click', () => {
+      if (!confirmAction('This permanently deletes all animals, events, expenses, income, and vaccination records on this device. This cannot be undone. Continue?')) return;
+      Storage.resetAllData();
+      toast('All data cleared');
+      window.location.hash = '#/dashboard';
+    });
   }
 };
 

@@ -52,9 +52,7 @@ Screens.animalDetail = function (container, params) {
 
         ${animal.status === 'alive' ? `
         <div class="quick-actions">
-          <button class="btn btn-outline" id="mark-sold">Mark Sold</button>
-          <button class="btn btn-outline" id="mark-deceased">Mark Deceased</button>
-          <button class="btn btn-outline" id="mark-lost">Mark Lost</button>
+          <button class="btn btn-outline btn-full" data-nav="#/animals/${animal.id}/exit">Update Status (Sold, Died, Stolen, Zakat, Gift, Slaughtered, Lost)</button>
         </div>` : ''}
 
         <button class="btn btn-danger" id="delete-animal">Delete Record</button>
@@ -69,13 +67,6 @@ Screens.animalDetail = function (container, params) {
     const newbornBtn = qs('newborn-from-mother');
     if (newbornBtn) newbornBtn.addEventListener('click', () => { window.location.hash = `#/newborn?mother=${animal.id}`; });
 
-    const soldBtn = qs('mark-sold');
-    if (soldBtn) soldBtn.addEventListener('click', () => changeStatus('sold', 'Sold'));
-    const deceasedBtn = qs('mark-deceased');
-    if (deceasedBtn) deceasedBtn.addEventListener('click', () => changeStatus('deceased', 'Died'));
-    const lostBtn = qs('mark-lost');
-    if (lostBtn) lostBtn.addEventListener('click', () => changeStatus('lost', 'Reported lost / missing'));
-
     qs('delete-animal').addEventListener('click', () => {
       if (confirmAction(`Permanently delete the record for ${animal.tag || 'this animal'}? This cannot be undone.`)) {
         Storage.deleteAnimal(animal.id);
@@ -83,15 +74,6 @@ Screens.animalDetail = function (container, params) {
         window.location.hash = '#/animals';
       }
     });
-
-    function changeStatus(status, verb) {
-      if (!confirmAction(`Mark ${animal.tag || 'this animal'} as ${STATUS.find(s => s.id === status).label}?`)) return;
-      Storage.updateAnimal(animal.id, { status });
-      Storage.addEvent(animal.id, 'status-change', todayStr(), verb);
-      toast('Updated');
-      Object.assign(animal, Storage.getAnimal(animal.id));
-      render();
-    }
   }
 };
 
