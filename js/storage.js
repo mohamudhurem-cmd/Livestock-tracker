@@ -1,30 +1,13 @@
 // Storage layer: everything lives in localStorage as plain JSON.
 // Kept dependency-free so the app runs with zero build step, fully offline.
-
-const SPECIES = [
-  { id: 'cattle', label: 'Cattle', icon: '\u{1F404}' },
-  { id: 'camel', label: 'Camel', icon: '\u{1F42B}' },
-  { id: 'goat', label: 'Goat', icon: '\u{1F410}' },
-  { id: 'sheep', label: 'Sheep', icon: '\u{1F411}' },
-];
-
-const STATUS = [
-  { id: 'alive', label: 'Alive' },
-  { id: 'sold', label: 'Sold' },
-  { id: 'deceased', label: 'Died' },
-  { id: 'theft', label: 'Stolen' },
-  { id: 'zakat', label: 'Given (Zakat)' },
-  { id: 'gift', label: 'Given (Gift)' },
-  { id: 'slaughtered', label: 'Slaughtered' },
-  { id: 'lost', label: 'Lost / Missing' },
-];
-
-const ACQUISITION = [
-  { id: 'born', label: 'Born here' },
-  { id: 'purchased', label: 'Purchased' },
-  { id: 'gift', label: 'Gift' },
-  { id: 'other', label: 'Other' },
-];
+//
+// Core model: the herd isn't individually tagged, so animals are tracked as
+// "cohorts" — a count of a given category/owner/sex that falls into an age
+// bracket. A cohort's bracket is never stored directly; it's derived live
+// from an assumed birth date (the midpoint of the bracket it was placed in),
+// so cohorts automatically "age into" the next bracket over time with no
+// migration step, the same way individual animal ages used to be computed
+// from a birthDate.
 
 const FINANCE_CATEGORY = [
   { id: 'cattle', label: 'Cattle', icon: '\u{1F404}' },
@@ -38,10 +21,31 @@ const CATTLE_OWNERS_SEED = ['Me', 'Abdullahi', 'Musa', 'Gini', 'Farhiya', 'Zeina
 const GOAT_SHEEP_JOINT_OWNER = 'Joint: Me, Dekow & Abdirizak';
 const CAMEL_SOLE_OWNER = 'Me';
 
+const AGE_BRACKETS = [
+  { id: '0-6m', label: '0–6 months', min: 0, max: 6 },
+  { id: '6-12m', label: '6 months – 1 year', min: 6, max: 12 },
+  { id: '1-1.5y', label: '1 – 1.5 years', min: 12, max: 18 },
+  { id: '1.5-2y', label: '1.5 – 2 years', min: 18, max: 24 },
+  { id: '2-2.5y', label: '2 – 2.5 years', min: 24, max: 30 },
+  { id: '2.5-3y', label: '2.5 – 3 years', min: 30, max: 36 },
+  { id: '3-4y', label: '3 – 4 years', min: 36, max: 48 },
+  { id: '4y+', label: '4+ years', min: 48, max: null },
+];
+
+const EXIT_REASONS = [
+  { id: 'sold', label: 'Sold' },
+  { id: 'deceased', label: 'Died' },
+  { id: 'theft', label: 'Stolen' },
+  { id: 'zakat', label: 'Given as Zakat' },
+  { id: 'gift', label: 'Given as Gift' },
+  { id: 'slaughtered', label: 'Slaughtered (guests / consumption)' },
+  { id: 'lost', label: 'Lost / Missing' },
+];
+
 const KEYS = {
-  animals: 'livestock_animals',
   owners: 'livestock_owners',
-  events: 'livestock_events',
+  cohorts: 'livestock_cohorts',
+  audits: 'livestock_audits',
   expenses: 'livestock_expenses',
   income: 'livestock_income',
   vaccinations: 'livestock_vaccinations',
@@ -53,6 +57,38 @@ function uid() {
 
 function todayStr() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function monthsBetween(fromDateStr, toDateStr) {
+  const from = new Date(fromDateStr + 'T00:00:00');
+  const to = new Date(toDateStr + 'T00:00:00');
+  let months = (to.getFullYear() - from.getFullYear()) * 12 + (to.getMonth() - from.getMonth());
+  if (to.getDate() < from.getDate()) months -= 1;
+  return Math.max(0, months);
+}
+
+function subtractMonths(dateStr, months) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setMonth(d.getMonth() - months);
+  return d.toISOString().slice(0, 10);
+}
+
+function bracketForMonths(months) {
+  for (const b of AGE_BRACKETS) {
+    if (b.max === null || months < b.max) return b.id;
+  }
+  return AGE_BRACKETS[AGE_BRACKETS.length - 1].id;
+}
+
+function bracketMidpointMonths(bracketId) {
+  const b = AGE_BRACKETS.find(b => b.id === bracketId);
+  if (!b) return 0;
+  return b.max === null ? b.min + 12 : Math.round((b.min + b.max) / 2);
+}
+
+function bracketLabel(bracketId) {
+  const b = AGE_BRACKETS.find(b => b.id === bracketId);
+  return b ? b.label : bracketId;
 }
 
 function readJSON(key, fallback) {
@@ -74,11 +110,11 @@ const Storage = {
     if (!localStorage.getItem(KEYS.owners)) {
       writeJSON(KEYS.owners, CATTLE_OWNERS_SEED.slice());
     }
-    if (!localStorage.getItem(KEYS.animals)) {
-      writeJSON(KEYS.animals, []);
+    if (!localStorage.getItem(KEYS.cohorts)) {
+      writeJSON(KEYS.cohorts, []);
     }
-    if (!localStorage.getItem(KEYS.events)) {
-      writeJSON(KEYS.events, []);
+    if (!localStorage.getItem(KEYS.audits)) {
+      writeJSON(KEYS.audits, []);
     }
     if (!localStorage.getItem(KEYS.expenses)) {
       writeJSON(KEYS.expenses, []);
@@ -103,99 +139,19 @@ const Storage = {
     return owners;
   },
   removeOwner(name) {
-    const inUse = this.getAnimals().some(a => a.owner === name);
-    if (inUse) return { ok: false, reason: 'Owner has animals assigned. Reassign them first.' };
+    const inUse = this.getCohorts().some(c => c.owner === name);
+    if (inUse) return { ok: false, reason: 'Owner has animals recorded. Move them via an audit first.' };
     const owners = this.getOwners().filter(o => o !== name);
     writeJSON(KEYS.owners, owners);
     return { ok: true };
   },
-
-  // --- Animals ---
-  getAnimals() {
-    return readJSON(KEYS.animals, []);
-  },
-  getAnimal(id) {
-    return this.getAnimals().find(a => a.id === id) || null;
-  },
-  saveAnimals(list) {
-    writeJSON(KEYS.animals, list);
-  },
-  addAnimal(data) {
-    const animals = this.getAnimals();
-    const now = new Date().toISOString();
-    const animal = {
-      id: uid(),
-      tag: data.tag || '',
-      species: data.species,
-      sex: data.sex || 'unknown',
-      birthDate: data.birthDate || null,
-      birthEstimated: !!data.birthEstimated,
-      owner: data.owner,
-      motherTag: data.motherTag || null,
-      fatherTag: data.fatherTag || null,
-      status: data.status || 'alive',
-      acquisition: data.acquisition || 'other',
-      notes: data.notes || '',
-      createdAt: now,
-      updatedAt: now,
-    };
-    animals.push(animal);
-    this.saveAnimals(animals);
-    this.addEvent(animal.id, data.eventType || 'created', data.eventDate || todayStr(),
-      data.eventDescription || `${this.speciesLabel(animal.species)} added to herd`);
-    return animal;
-  },
-  updateAnimal(id, changes) {
-    const animals = this.getAnimals();
-    const idx = animals.findIndex(a => a.id === id);
-    if (idx === -1) return null;
-    const before = animals[idx];
-    const updated = { ...before, ...changes, updatedAt: new Date().toISOString() };
-    animals[idx] = updated;
-    this.saveAnimals(animals);
-    return updated;
-  },
-  deleteAnimal(id) {
-    const animals = this.getAnimals().filter(a => a.id !== id);
-    this.saveAnimals(animals);
-    const events = this.getEvents().filter(e => e.animalId !== id);
-    writeJSON(KEYS.events, events);
-  },
-  speciesLabel(id) {
-    const s = SPECIES.find(s => s.id === id);
-    return s ? s.label : id;
-  },
-  speciesIcon(id) {
-    const s = SPECIES.find(s => s.id === id);
-    return s ? s.icon : '';
+  ownersForCategory(category) {
+    if (category === 'cattle') return this.getOwners();
+    if (category === 'camel') return [CAMEL_SOLE_OWNER];
+    return [GOAT_SHEEP_JOINT_OWNER];
   },
 
-  // --- Events ---
-  getEvents() {
-    return readJSON(KEYS.events, []).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
-  },
-  getEventsForAnimal(animalId) {
-    return this.getEvents().filter(e => e.animalId === animalId);
-  },
-  addEvent(animalId, type, date, description) {
-    const events = readJSON(KEYS.events, []);
-    const event = {
-      id: uid(),
-      animalId,
-      type,
-      date: date || todayStr(),
-      description: description || '',
-      createdAt: new Date().toISOString(),
-    };
-    events.push(event);
-    writeJSON(KEYS.events, events);
-    return event;
-  },
-
-  // --- Finance category ---
-  financeCategoryForSpecies(speciesId) {
-    return (speciesId === 'goat' || speciesId === 'sheep') ? 'goatsheep' : speciesId;
-  },
+  // --- Finance category labels ---
   financeCategoryLabel(id) {
     const c = FINANCE_CATEGORY.find(c => c.id === id);
     return c ? c.label : id;
@@ -205,19 +161,171 @@ const Storage = {
     return c ? c.icon : '';
   },
 
+  // --- Cohorts ---
+  getCohorts() {
+    return readJSON(KEYS.cohorts, []);
+  },
+  saveCohorts(list) {
+    writeJSON(KEYS.cohorts, list);
+  },
+  currentBracketFor(cohort, asOf) {
+    return bracketForMonths(monthsBetween(cohort.assumedBirthDate, asOf || todayStr()));
+  },
+  addCohort(data) {
+    const cohorts = this.getCohorts();
+    const now = new Date().toISOString();
+    const cohort = {
+      id: uid(),
+      category: data.category,
+      owner: data.owner,
+      sex: data.sex,
+      assumedBirthDate: data.assumedBirthDate,
+      count: Number(data.count) || 0,
+      notes: data.notes || '',
+      createdAt: now,
+      updatedAt: now,
+    };
+    cohorts.push(cohort);
+    this.saveCohorts(cohorts);
+    return cohort;
+  },
+  addNewborns({ category, owner, sex, count, date, notes }) {
+    return this.addCohort({ category, owner, sex, assumedBirthDate: date || todayStr(), count, notes });
+  },
+  // Flat rows of { category, owner, sex, bracket, count }, brackets computed live "as of" today.
+  herdSummary() {
+    const cohorts = this.getCohorts();
+    const today = todayStr();
+    const map = new Map();
+    cohorts.forEach(c => {
+      const bracket = this.currentBracketFor(c, today);
+      const key = [c.category, c.owner, c.sex, bracket].join('|');
+      if (!map.has(key)) map.set(key, { category: c.category, owner: c.owner, sex: c.sex, bracket, count: 0 });
+      map.get(key).count += c.count;
+    });
+    return [...map.values()];
+  },
+  totalCount() {
+    return this.getCohorts().reduce((sum, c) => sum + c.count, 0);
+  },
+  // 8 rows (one per age bracket) with {bracket, label, male, female} for one category/owner.
+  bracketGridFor(category, owner) {
+    const rows = this.herdSummary().filter(r => r.category === category && r.owner === owner);
+    return AGE_BRACKETS.map(b => {
+      const male = rows.find(r => r.bracket === b.id && r.sex === 'male');
+      const female = rows.find(r => r.bracket === b.id && r.sex === 'female');
+      return { bracket: b.id, label: b.label, male: male ? male.count : 0, female: female ? female.count : 0 };
+    });
+  },
+  countsByCategory() {
+    const counts = {};
+    FINANCE_CATEGORY.forEach(c => (counts[c.id] = 0));
+    this.getCohorts().forEach(c => { counts[c.category] = (counts[c.category] || 0) + c.count; });
+    return counts;
+  },
+  countsByOwner() {
+    const counts = {};
+    this.getCohorts().forEach(c => { counts[c.owner] = (counts[c.owner] || 0) + c.count; });
+    return counts;
+  },
+
+  // --- Audits ---
+  getAudits() {
+    return readJSON(KEYS.audits, []).sort((a, b) => (b.date || '').localeCompare(a.date || '') || (b.createdAt || '').localeCompare(a.createdAt || ''));
+  },
+  getAudit(id) {
+    return this.getAudits().find(a => a.id === id) || null;
+  },
+  // finalGrid: [{category, owner, sex, bracket, count}], exits: [{category, owner, sex, bracket, countLost, reason, amount, notes}]
+  submitAudit({ date, finalGrid, exits, notes }) {
+    const auditDate = date || todayStr();
+    const previousGrid = this.herdSummary();
+    const createdAt = new Date().toISOString();
+    const audit = {
+      id: uid(),
+      date: auditDate,
+      previousGrid,
+      finalGrid,
+      exits: exits || [],
+      notes: notes || '',
+      createdAt,
+    };
+    const audits = readJSON(KEYS.audits, []);
+    audits.push(audit);
+    writeJSON(KEYS.audits, audits);
+
+    const newCohorts = finalGrid
+      .filter(row => row.count > 0)
+      .map(row => ({
+        id: uid(),
+        category: row.category,
+        owner: row.owner,
+        sex: row.sex,
+        assumedBirthDate: subtractMonths(auditDate, bracketMidpointMonths(row.bracket)),
+        count: row.count,
+        notes: '',
+        createdAt,
+        updatedAt: createdAt,
+      }));
+    this.saveCohorts(newCohorts);
+
+    (exits || []).forEach(ex => {
+      if (ex.reason === 'sold' && ex.amount) {
+        this.addIncome({
+          category: ex.category,
+          source: 'sale',
+          amount: ex.amount,
+          date: auditDate,
+          notes: `Audit: ${ex.countLost} ${ex.sex} (${bracketLabel(ex.bracket)}), ${ex.owner}${ex.notes ? ' — ' + ex.notes : ''}`,
+        });
+      }
+    });
+
+    return audit;
+  },
+
   // --- Expenses ---
+  // Cattle expenses are shared costs across individually-owned cattle: split proportionally
+  // by each owner's headcount at the time the expense is recorded (locked in, so later
+  // audits don't retroactively change what an owner already owes).
+  computeCattleSplit(amount) {
+    const counts = {};
+    this.getOwners().forEach(o => { counts[o] = 0; });
+    this.herdSummary().filter(r => r.category === 'cattle').forEach(r => { counts[r.owner] = (counts[r.owner] || 0) + r.count; });
+    const owners = this.getOwners();
+    const total = Object.values(counts).reduce((s, c) => s + c, 0);
+    if (total === 0) {
+      const equalShare = Math.round((amount / owners.length) * 100) / 100;
+      return owners.map(o => ({ owner: o, headcount: 0, share: equalShare }));
+    }
+    return owners.map(o => ({
+      owner: o,
+      headcount: counts[o],
+      share: Math.round((amount * counts[o] / total) * 100) / 100,
+    }));
+  },
+  cattleOwnerDues() {
+    const dues = {};
+    this.getOwners().forEach(o => { dues[o] = 0; });
+    this.getExpenses().filter(e => e.category === 'cattle' && e.split).forEach(e => {
+      e.split.forEach(s => { dues[s.owner] = (dues[s.owner] || 0) + s.share; });
+    });
+    return dues;
+  },
   getExpenses() {
     return readJSON(KEYS.expenses, []).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
   },
   addExpense(data) {
     const expenses = readJSON(KEYS.expenses, []);
+    const amount = Number(data.amount) || 0;
     const expense = {
       id: uid(),
       category: data.category,
-      amount: Number(data.amount) || 0,
+      amount,
       date: data.date || todayStr(),
       type: data.type || 'Other',
       notes: data.notes || '',
+      split: data.category === 'cattle' ? this.computeCattleSplit(amount) : null,
       createdAt: new Date().toISOString(),
     };
     expenses.push(expense);
@@ -240,7 +348,6 @@ const Storage = {
       source: data.source || 'other',
       amount: Number(data.amount) || 0,
       date: data.date || todayStr(),
-      animalId: data.animalId || null,
       liters: data.liters != null ? Number(data.liters) : null,
       pricePerLiter: data.pricePerLiter != null ? Number(data.pricePerLiter) : null,
       notes: data.notes || '',
@@ -311,74 +418,46 @@ const Storage = {
     return this._tallyTotals(this.getExpenses(), this.getIncome());
   },
 
-  // --- Aggregates ---
-  countsBySpecies(filterFn) {
-    const animals = this.getAnimals().filter(a => a.status === 'alive').filter(filterFn || (() => true));
-    const counts = {};
-    SPECIES.forEach(s => (counts[s.id] = 0));
-    animals.forEach(a => { counts[a.species] = (counts[a.species] || 0) + 1; });
-    return counts;
-  },
-  countsByOwner() {
-    const animals = this.getAnimals().filter(a => a.status === 'alive');
-    const counts = {};
-    animals.forEach(a => { counts[a.owner] = (counts[a.owner] || 0) + 1; });
-    return counts;
-  },
-  totalAlive() {
-    return this.getAnimals().filter(a => a.status === 'alive').length;
-  },
-
   // --- Backup / restore ---
   exportData() {
     return {
       exportedAt: new Date().toISOString(),
       owners: this.getOwners(),
-      animals: this.getAnimals(),
-      events: readJSON(KEYS.events, []),
+      cohorts: this.getCohorts(),
+      audits: readJSON(KEYS.audits, []),
       expenses: readJSON(KEYS.expenses, []),
       income: readJSON(KEYS.income, []),
       vaccinations: readJSON(KEYS.vaccinations, []),
     };
   },
   importData(data, mode) {
-    if (!data || !Array.isArray(data.animals)) throw new Error('Invalid backup file');
+    if (!data || !Array.isArray(data.cohorts)) throw new Error('Invalid backup file');
     if (mode === 'replace') {
       writeJSON(KEYS.owners, data.owners || CATTLE_OWNERS_SEED.slice());
-      writeJSON(KEYS.animals, data.animals || []);
-      writeJSON(KEYS.events, data.events || []);
+      writeJSON(KEYS.cohorts, data.cohorts || []);
+      writeJSON(KEYS.audits, data.audits || []);
       writeJSON(KEYS.expenses, data.expenses || []);
       writeJSON(KEYS.income, data.income || []);
       writeJSON(KEYS.vaccinations, data.vaccinations || []);
     } else {
-      // merge: add records whose id isn't already present
       const owners = new Set([...this.getOwners(), ...(data.owners || [])]);
       writeJSON(KEYS.owners, [...owners]);
-
-      const animals = this.getAnimals();
-      const existingIds = new Set(animals.map(a => a.id));
-      (data.animals || []).forEach(a => { if (!existingIds.has(a.id)) animals.push(a); });
-      writeJSON(KEYS.animals, animals);
-
-      const events = readJSON(KEYS.events, []);
-      const existingEventIds = new Set(events.map(e => e.id));
-      (data.events || []).forEach(e => { if (!existingEventIds.has(e.id)) events.push(e); });
-      writeJSON(KEYS.events, events);
-
       const mergeById = (key, incoming) => {
         const current = readJSON(key, []);
         const ids = new Set(current.map(r => r.id));
         (incoming || []).forEach(r => { if (!ids.has(r.id)) current.push(r); });
         writeJSON(key, current);
       };
+      mergeById(KEYS.cohorts, data.cohorts);
+      mergeById(KEYS.audits, data.audits);
       mergeById(KEYS.expenses, data.expenses);
       mergeById(KEYS.income, data.income);
       mergeById(KEYS.vaccinations, data.vaccinations);
     }
   },
   resetAllData() {
-    writeJSON(KEYS.animals, []);
-    writeJSON(KEYS.events, []);
+    writeJSON(KEYS.cohorts, []);
+    writeJSON(KEYS.audits, []);
     writeJSON(KEYS.expenses, []);
     writeJSON(KEYS.income, []);
     writeJSON(KEYS.vaccinations, []);

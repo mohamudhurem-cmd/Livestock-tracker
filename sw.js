@@ -1,4 +1,4 @@
-const CACHE_NAME = 'livestock-tracker-v2';
+const CACHE_NAME = 'livestock-tracker-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -9,11 +9,9 @@ const ASSETS = [
   './js/router.js',
   './js/app.js',
   './js/screens/dashboard.js',
-  './js/screens/animals.js',
-  './js/screens/animalDetail.js',
-  './js/screens/animalForm.js',
-  './js/screens/animalExit.js',
-  './js/screens/newborn.js',
+  './js/screens/herd.js',
+  './js/screens/newbornBatch.js',
+  './js/screens/audit.js',
   './js/screens/money.js',
   './js/screens/expenses.js',
   './js/screens/income.js',

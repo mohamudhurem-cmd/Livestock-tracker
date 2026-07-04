@@ -18,7 +18,7 @@ Screens.expensesList = function (container, params) {
         <span class="timeline-date">${formatDate(e.date)}</span>
         <span class="timeline-text">
           <strong>${Storage.financeCategoryIcon(e.category)} ${Storage.financeCategoryLabel(e.category)}</strong>
-          — ${escapeHtml(e.type)}${e.notes ? ' (' + escapeHtml(e.notes) + ')' : ''}
+          — ${escapeHtml(e.type)}${e.notes ? ' (' + escapeHtml(e.notes) + ')' : ''}${e.category === 'cattle' ? ' · shared by headcount' : ''}
         </span>
         <span class="money-amt money-out">KES ${e.amount.toLocaleString()}</span>
       </div>
@@ -35,6 +35,7 @@ Screens.expensesList = function (container, params) {
           ${categoryOptions}
         </select>
         <p class="subtitle">Total: KES ${total.toLocaleString()}</p>
+        <button class="btn btn-outline btn-full" data-nav="#/expenses/cattle-shares">View Cattle Owner Shares</button>
         <div class="timeline">${rows}</div>
       </div>
     `;
@@ -88,4 +89,50 @@ Screens.expenseForm = function (container) {
     toast('Expense saved');
     window.location.hash = '#/expenses';
   });
+};
+
+Screens.cattleShares = function (container) {
+  const dues = Storage.cattleOwnerDues();
+  const cattleCounts = Storage.countsByOwner();
+  const owners = Storage.getOwners();
+  const cattleExpenses = Storage.getExpenses().filter(e => e.category === 'cattle' && e.split);
+
+  const dueRows = owners.map(o => `
+    <tr>
+      <td>${escapeHtml(o)}</td>
+      <td>${cattleCounts[o] || 0}</td>
+      <td><strong>KES ${(dues[o] || 0).toLocaleString()}</strong></td>
+    </tr>
+  `).join('');
+
+  const expenseDetails = cattleExpenses.length ? cattleExpenses.map(e => `
+    <details class="owner-audit-section">
+      <summary>${formatDate(e.date)} — ${escapeHtml(e.type)} <span class="owner-count">KES ${e.amount.toLocaleString()}</span></summary>
+      <table class="grid-table">
+        <thead><tr><th>Owner</th><th>Headcount then</th><th>Share</th></tr></thead>
+        <tbody>
+          ${e.split.filter(s => s.share > 0).map(s => `
+            <tr><td>${escapeHtml(s.owner)}</td><td>${s.headcount}</td><td>KES ${s.share.toLocaleString()}</td></tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </details>
+  `).join('') : '<p class="empty">No cattle expenses recorded yet.</p>';
+
+  container.innerHTML = `
+    <div class="screen">
+      <button class="link-back" data-nav="#/expenses">&larr; Back to Expenses</button>
+      <h1>Cattle Owner Shares</h1>
+      <p class="subtitle">Every cattle expense is split across owners by how many cattle each owned at the time it was recorded.</p>
+
+      <table class="grid-table">
+        <thead><tr><th>Owner</th><th>Cattle now</th><th>Total due</th></tr></thead>
+        <tbody>${dueRows}</tbody>
+      </table>
+
+      <h2>Expense Breakdown</h2>
+      ${expenseDetails}
+    </div>
+  `;
+  container.querySelectorAll('[data-nav]').forEach(n => n.addEventListener('click', () => { window.location.hash = n.getAttribute('data-nav'); }));
 };

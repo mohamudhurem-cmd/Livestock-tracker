@@ -16,8 +16,8 @@ Screens.settings = function (container) {
       <div class="screen">
         <h1>Settings</h1>
 
-        <h2>Owners</h2>
-        <p class="subtitle">Whoever's cattle, camels, goats, or sheep are in the herd — add each person here so you can assign and filter animals by owner.</p>
+        <h2>Cattle Owners</h2>
+        <p class="subtitle">Cattle are individually owned, so each name here becomes its own age/sex grid on the Herd screen. Camels and goats/sheep have fixed ownership and don't use this list.</p>
         <div class="owner-manage-list">${ownerRows}</div>
         <form id="add-owner-form" class="inline-form">
           <input class="text-input" name="owner" placeholder="e.g. Brother - Ahmed" />
@@ -37,7 +37,7 @@ Screens.settings = function (container) {
         </div>
 
         <h2>Danger Zone</h2>
-        <p class="subtitle">Clears all animals, events, expenses, income, and vaccination records on this device. Owners list is kept. Export a backup first if you're not sure.</p>
+        <p class="subtitle">Clears all herd counts, audit history, expenses, income, and vaccination records on this device. Owners list is kept. Export a backup first if you're not sure.</p>
         <button class="btn btn-danger" id="reset-data-btn">Reset All Data</button>
 
         <h2>About</h2>
@@ -103,7 +103,7 @@ Screens.settings = function (container) {
     qs('import-replace').addEventListener('click', () => doImport('replace'));
 
     qs('reset-data-btn').addEventListener('click', () => {
-      if (!confirmAction('This permanently deletes all animals, events, expenses, income, and vaccination records on this device. This cannot be undone. Continue?')) return;
+      if (!confirmAction('This permanently deletes all herd counts, audit history, expenses, income, and vaccination records on this device. This cannot be undone. Continue?')) return;
       Storage.resetAllData();
       toast('All data cleared');
       window.location.hash = '#/dashboard';

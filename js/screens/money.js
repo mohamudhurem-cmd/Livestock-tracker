@@ -67,6 +67,7 @@ Screens.money = function (container) {
         <button class="owner-row" data-nav="#/expenses"><span>Expenses</span><span>&rarr;</span></button>
         <button class="owner-row" data-nav="#/income"><span>Income</span><span>&rarr;</span></button>
         <button class="owner-row" data-nav="#/vaccinations"><span>Vaccinations</span><span>&rarr;</span></button>
+        <button class="owner-row" data-nav="#/expenses/cattle-shares"><span>Cattle Owner Shares</span><span>&rarr;</span></button>
       </div>
     </div>
   `;
