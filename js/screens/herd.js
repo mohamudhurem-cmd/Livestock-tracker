@@ -41,9 +41,12 @@ Screens.herdOverview = function (container) {
 
       <div class="quick-actions">
         <button class="btn btn-primary" data-nav="#/herd/newborns">+ Log Newborns</button>
-        <button class="btn btn-secondary" data-nav="#/audit/new">+ Start Audit</button>
+        <button class="btn btn-secondary" data-nav="#/herd/purchase">+ Log Purchase</button>
       </div>
-      <button class="btn btn-outline btn-full" data-nav="#/audits">View Audit History</button>
+      <div class="quick-actions">
+        <button class="btn btn-outline" data-nav="#/audit/new">+ Start Audit</button>
+        <button class="btn btn-outline" data-nav="#/audits">View Audit History</button>
+      </div>
 
       <h2>${Storage.financeCategoryIcon('cattle')} Cattle — by owner</h2>
       <div class="owner-list">${cattleRows}</div>
@@ -70,6 +73,7 @@ Screens.herdOwnerDetail = function (container, params) {
       ${renderBracketGrid(grid)}
       <div class="quick-actions">
         <button class="btn btn-primary" data-nav="#/herd/newborns">+ Log Newborns</button>
+        <button class="btn btn-secondary" data-nav="#/herd/purchase">+ Log Purchase</button>
       </div>
     </div>
   `;

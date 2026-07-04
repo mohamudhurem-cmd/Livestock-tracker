@@ -16,6 +16,10 @@ Screens.settings = function (container) {
       <div class="screen">
         <h1>Settings</h1>
 
+        <h2>Sync</h2>
+        <p class="subtitle" id="sync-status">${syncStatusText()}</p>
+        <button class="btn btn-outline btn-full" id="sync-now-btn">Sync Now</button>
+
         <h2>Cattle Owners</h2>
         <p class="subtitle">Cattle are individually owned, so each name here becomes its own age/sex grid on the Herd screen. Camels and goats/sheep have fixed ownership and don't use this list.</p>
         <div class="owner-manage-list">${ownerRows}</div>
@@ -108,6 +112,41 @@ Screens.settings = function (container) {
       toast('All data cleared');
       window.location.hash = '#/dashboard';
     });
+
+    qs('sync-now-btn').addEventListener('click', async () => {
+      if (typeof Sync === 'undefined' || !Sync.status().configured) { toast('Sync isn\'t set up on this app yet'); return; }
+      toast('Syncing...');
+      await Sync.syncNow();
+      toast('Sync done');
+      render();
+    });
   }
 };
+
+function timeAgo(iso) {
+  if (!iso) return null;
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  return `${Math.round(hours / 24)} day${Math.round(hours / 24) === 1 ? '' : 's'} ago`;
+}
+
+function syncStatusText() {
+  if (typeof Sync === 'undefined') return 'Sync not available in this build.';
+  const s = Sync.status();
+  if (!s.configured) return 'Not set up yet — this device only saves to itself. See the assistant for setup steps.';
+  const pulled = timeAgo(s.lastPulledAt);
+  const pushed = timeAgo(s.lastPushedAt);
+  const parts = [];
+  if (s.state === 'syncing') parts.push('Syncing…');
+  else if (s.state === 'offline') parts.push('Offline — using local data.');
+  else if (s.state === 'error') parts.push('Last sync failed — using local data.');
+  else parts.push('Synced.');
+  if (pulled) parts.push(`Last received ${pulled}.`);
+  if (pushed) parts.push(`Last sent ${pushed}.`);
+  return parts.join(' ');
+}
 

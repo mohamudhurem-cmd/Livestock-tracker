@@ -75,14 +75,16 @@ Screens.auditForm = function (container) {
     const finalGrid = readFinalGrid();
     const auditDate = qs('audit-date').value || todayStr();
     const decreases = [];
+    const increases = [];
     finalGrid.forEach(row => {
       const before = cellValue(row.category, row.owner, row.sex, row.bracket);
       if (row.count < before) decreases.push({ ...row, countLost: before - row.count });
+      else if (row.count > before) increases.push({ ...row, countGained: row.count - before });
     });
-    renderReviewPhase(finalGrid, decreases, auditDate);
+    renderReviewPhase(finalGrid, decreases, increases, auditDate);
   }
 
-  function renderReviewPhase(finalGrid, decreases, auditDate) {
+  function renderReviewPhase(finalGrid, decreases, increases, auditDate) {
     const totalBefore = previousGrid.reduce((s, r) => s + r.count, 0);
     const totalAfter = finalGrid.reduce((s, r) => s + r.count, 0);
 
@@ -97,6 +99,17 @@ Screens.auditForm = function (container) {
       </div>
     `).join('');
 
+    const increaseRows = increases.map((inc, i) => `
+      <div class="exit-prompt">
+        <p><strong>${Storage.financeCategoryLabel(inc.category)}</strong> — ${escapeHtml(inc.owner)}, ${inc.sex}, ${bracketLabel(inc.bracket)}: up by ${inc.countGained}</p>
+        <select class="select-input increase-reason" data-idx="${i}">
+          <option value="">Not sure / skip</option>
+          ${INCREASE_REASONS.map(r => `<option value="${r.id}">${r.label}</option>`).join('')}
+        </select>
+        <input class="text-input increase-amount" data-idx="${i}" type="number" min="0" placeholder="Purchase cost (KES), if purchased" style="margin-top:8px; display:none;" />
+      </div>
+    `).join('');
+
     container.innerHTML = `
       <div class="screen">
         <button class="link-back" id="back-to-edit">&larr; Back to counts</button>
@@ -107,7 +120,15 @@ Screens.auditForm = function (container) {
           <h2>What happened to the missing animals?</h2>
           <p class="subtitle">Optional — helps keep income and history accurate.</p>
           <div id="exit-prompts">${decreaseRows}</div>
-        ` : '<p class="empty">No decreases — nothing to explain.</p>'}
+        ` : ''}
+
+        ${increases.length ? `
+          <h2>Where did the extra animals come from?</h2>
+          <p class="subtitle">Optional — helps keep expenses and history accurate.</p>
+          <div id="increase-prompts">${increaseRows}</div>
+        ` : ''}
+
+        ${!decreases.length && !increases.length ? '<p class="empty">No changes beyond normal aging — nothing to explain.</p>' : ''}
 
         <button class="btn btn-primary btn-full" id="save-audit-btn">Save Audit</button>
       </div>
@@ -119,6 +140,13 @@ Screens.auditForm = function (container) {
       sel.addEventListener('change', () => {
         const amountInput = sel.closest('.exit-prompt').querySelector('.exit-amount');
         amountInput.style.display = sel.value === 'sold' ? '' : 'none';
+      });
+    });
+
+    container.querySelectorAll('.increase-reason').forEach(sel => {
+      sel.addEventListener('change', () => {
+        const amountInput = sel.closest('.exit-prompt').querySelector('.increase-amount');
+        amountInput.style.display = sel.value === 'purchased' ? '' : 'none';
       });
     });
 
@@ -135,7 +163,19 @@ Screens.auditForm = function (container) {
         };
       }).filter(Boolean);
 
-      Storage.submitAudit({ date: auditDate, finalGrid, exits });
+      const increaseRecords = increases.map((inc, i) => {
+        const reasonSel = container.querySelector(`.increase-reason[data-idx="${i}"]`);
+        const amountInput = container.querySelector(`.increase-amount[data-idx="${i}"]`);
+        const reason = reasonSel.value;
+        if (!reason) return null;
+        return {
+          category: inc.category, owner: inc.owner, sex: inc.sex, bracket: inc.bracket,
+          countGained: inc.countGained, reason,
+          amount: reason === 'purchased' ? Number(amountInput.value) || 0 : null,
+        };
+      }).filter(Boolean);
+
+      Storage.submitAudit({ date: auditDate, finalGrid, exits, increases: increaseRecords });
       toast('Audit saved');
       window.location.hash = '#/herd';
     });
@@ -218,15 +258,31 @@ Screens.auditDetail = function (container, params) {
   const correctionsSection = diffRows(audit.previousGrid, audit.finalGrid, 'Corrections Made In This Audit');
 
   const exitsSection = audit.exits.length ? `
-    <h2>Recorded Exits</h2>
+    <h2>Recorded Exits (herd decreased)</h2>
     <div class="timeline">
       ${audit.exits.map(ex => `
         <div class="timeline-row">
-          <span class="timeline-date">${ex.countLost}x</span>
+          <span class="timeline-date">-${ex.countLost}</span>
           <span class="timeline-text">
             <strong>${Storage.financeCategoryLabel(ex.category)}</strong> — ${escapeHtml(ex.owner)}, ${ex.sex}, ${bracketLabel(ex.bracket)}:
             ${EXIT_REASONS.find(r => r.id === ex.reason)?.label || ex.reason}
             ${ex.amount ? ` (KES ${Number(ex.amount).toLocaleString()})` : ''}
+          </span>
+        </div>
+      `).join('')}
+    </div>
+  ` : '';
+
+  const increasesSection = (audit.increases || []).length ? `
+    <h2>Recorded Acquisitions (herd increased)</h2>
+    <div class="timeline">
+      ${audit.increases.map(inc => `
+        <div class="timeline-row">
+          <span class="timeline-date">+${inc.countGained}</span>
+          <span class="timeline-text">
+            <strong>${Storage.financeCategoryLabel(inc.category)}</strong> — ${escapeHtml(inc.owner)}, ${inc.sex}, ${bracketLabel(inc.bracket)}:
+            ${INCREASE_REASONS.find(r => r.id === inc.reason)?.label || inc.reason}
+            ${inc.amount ? ` (KES ${Number(inc.amount).toLocaleString()})` : ''}
           </span>
         </div>
       `).join('')}
@@ -244,6 +300,7 @@ Screens.auditDetail = function (container, params) {
       ${sinceLastSection}
       ${correctionsSection}
       ${exitsSection}
+      ${increasesSection}
     </div>
   `;
   container.querySelectorAll('[data-nav]').forEach(n => n.addEventListener('click', () => { window.location.hash = n.getAttribute('data-nav'); }));

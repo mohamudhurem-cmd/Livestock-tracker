@@ -3,6 +3,7 @@
 Router.register('/dashboard', Screens.dashboard);
 Router.register('/herd', Screens.herdOverview);
 Router.register('/herd/newborns', Screens.newbornForm);
+Router.register('/herd/purchase', Screens.purchaseForm);
 Router.register('/herd/:category/:owner', (c, p) => Screens.herdOwnerDetail(c, { category: p.category, owner: p.owner }));
 Router.register('/audit/new', Screens.auditForm);
 Router.register('/audits', Screens.auditHistory);
@@ -25,3 +26,10 @@ if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.
 }
 
 Router.start('app');
+
+// Best-effort: pull the latest shared data (if configured + online) and re-render
+// the current screen if anything changed. Silently does nothing otherwise — the
+// app already works fully offline from local data.
+if (typeof Sync !== 'undefined') {
+  Sync.init().then(changed => { if (changed) Router.resolve(); });
+}

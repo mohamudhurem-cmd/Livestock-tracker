@@ -1,9 +1,11 @@
-const CACHE_NAME = 'livestock-tracker-v4';
+const CACHE_NAME = 'livestock-tracker-v8';
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './css/styles.css',
+  './js/sync-config.js',
+  './js/sync.js',
   './js/utils.js',
   './js/storage.js',
   './js/router.js',
@@ -11,6 +13,7 @@ const ASSETS = [
   './js/screens/dashboard.js',
   './js/screens/herd.js',
   './js/screens/newbornBatch.js',
+  './js/screens/purchase.js',
   './js/screens/audit.js',
   './js/screens/money.js',
   './js/screens/expenses.js',
@@ -36,6 +39,10 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  // Only manage the app's own same-origin files. Cross-origin calls (the
+  // GitHub sync API in particular) must always hit the network — caching
+  // them would make Sync.pull() see stale data instead of the real latest.
+  if (!event.request.url.startsWith(self.location.origin)) return;
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const network = fetch(event.request)

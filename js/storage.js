@@ -15,7 +15,7 @@ const FINANCE_CATEGORY = [
   { id: 'goatsheep', label: 'Goats & Sheep', icon: '\u{1F410}' },
 ];
 
-const EXPENSE_TYPES = ['Feed', 'Veterinary / Medicine', 'Labor', 'Water', 'Transport', 'Other'];
+const EXPENSE_TYPES = ['Feed', 'Veterinary / Medicine', 'Labor', 'Water', 'Transport', 'Animal Purchase', 'Other'];
 
 const CATTLE_OWNERS_SEED = ['Me', 'Abdullahi', 'Musa', 'Gini', 'Farhiya', 'Zeinab', 'Kaltuma', 'Lathan', 'Mohamedqadar', 'Ali Yarrow', 'Abdi'];
 const GOAT_SHEEP_JOINT_OWNER = 'Joint: Me, Dekow & Abdirizak';
@@ -40,6 +40,13 @@ const EXIT_REASONS = [
   { id: 'gift', label: 'Given as Gift' },
   { id: 'slaughtered', label: 'Slaughtered (guests / consumption)' },
   { id: 'lost', label: 'Lost / Missing' },
+];
+
+const INCREASE_REASONS = [
+  { id: 'purchased', label: 'Purchased' },
+  { id: 'gift-in', label: 'Given as Gift (received)' },
+  { id: 'found', label: 'Found / Recount correction' },
+  { id: 'other', label: 'Other' },
 ];
 
 const KEYS = {
@@ -106,6 +113,9 @@ function writeJSON(key, value) {
 }
 
 const Storage = {
+  _afterWrite() {
+    if (typeof Sync !== 'undefined') Sync.push();
+  },
   init() {
     if (!localStorage.getItem(KEYS.owners)) {
       writeJSON(KEYS.owners, CATTLE_OWNERS_SEED.slice());
@@ -136,6 +146,7 @@ const Storage = {
     if (!name || owners.includes(name)) return owners;
     owners.push(name);
     writeJSON(KEYS.owners, owners);
+    this._afterWrite();
     return owners;
   },
   removeOwner(name) {
@@ -143,6 +154,7 @@ const Storage = {
     if (inUse) return { ok: false, reason: 'Owner has animals recorded. Move them via an audit first.' };
     const owners = this.getOwners().filter(o => o !== name);
     writeJSON(KEYS.owners, owners);
+    this._afterWrite();
     return { ok: true };
   },
   ownersForCategory(category) {
@@ -187,6 +199,7 @@ const Storage = {
     };
     cohorts.push(cohort);
     this.saveCohorts(cohorts);
+    this._afterWrite();
     return cohort;
   },
   addNewborns({ category, owner, sex, count, date, notes }) {
@@ -236,8 +249,10 @@ const Storage = {
   getAudit(id) {
     return this.getAudits().find(a => a.id === id) || null;
   },
-  // finalGrid: [{category, owner, sex, bracket, count}], exits: [{category, owner, sex, bracket, countLost, reason, amount, notes}]
-  submitAudit({ date, finalGrid, exits, notes }) {
+  // finalGrid: [{category, owner, sex, bracket, count}]
+  // exits: [{category, owner, sex, bracket, countLost, reason, amount, notes}] — reduces an owner's herd
+  // increases: [{category, owner, sex, bracket, countGained, reason, amount, notes}] — grows an owner's herd
+  submitAudit({ date, finalGrid, exits, increases, notes }) {
     const auditDate = date || todayStr();
     const previousGrid = this.herdSummary();
     const createdAt = new Date().toISOString();
@@ -247,6 +262,7 @@ const Storage = {
       previousGrid,
       finalGrid,
       exits: exits || [],
+      increases: increases || [],
       notes: notes || '',
       createdAt,
     };
@@ -281,6 +297,19 @@ const Storage = {
       }
     });
 
+    (increases || []).forEach(inc => {
+      if (inc.reason === 'purchased' && inc.amount) {
+        this.addExpense({
+          category: inc.category,
+          amount: inc.amount,
+          date: auditDate,
+          type: 'Animal Purchase',
+          notes: `Audit: ${inc.countGained} ${inc.sex} (${bracketLabel(inc.bracket)}), ${inc.owner}${inc.notes ? ' — ' + inc.notes : ''}`,
+        });
+      }
+    });
+
+    this._afterWrite();
     return audit;
   },
 
@@ -330,10 +359,12 @@ const Storage = {
     };
     expenses.push(expense);
     writeJSON(KEYS.expenses, expenses);
+    this._afterWrite();
     return expense;
   },
   deleteExpense(id) {
     writeJSON(KEYS.expenses, readJSON(KEYS.expenses, []).filter(e => e.id !== id));
+    this._afterWrite();
   },
 
   // --- Income ---
@@ -355,10 +386,12 @@ const Storage = {
     };
     income.push(entry);
     writeJSON(KEYS.income, income);
+    this._afterWrite();
     return entry;
   },
   deleteIncome(id) {
     writeJSON(KEYS.income, readJSON(KEYS.income, []).filter(e => e.id !== id));
+    this._afterWrite();
   },
 
   // --- Vaccinations ---
@@ -378,10 +411,12 @@ const Storage = {
     };
     vaccinations.push(record);
     writeJSON(KEYS.vaccinations, vaccinations);
+    this._afterWrite();
     return record;
   },
   deleteVaccination(id) {
     writeJSON(KEYS.vaccinations, readJSON(KEYS.vaccinations, []).filter(v => v.id !== id));
+    this._afterWrite();
   },
   vaccinationAlerts() {
     const vaccinations = this.getVaccinations();
@@ -454,6 +489,7 @@ const Storage = {
       mergeById(KEYS.income, data.income);
       mergeById(KEYS.vaccinations, data.vaccinations);
     }
+    this._afterWrite();
   },
   resetAllData() {
     writeJSON(KEYS.cohorts, []);
@@ -461,6 +497,7 @@ const Storage = {
     writeJSON(KEYS.expenses, []);
     writeJSON(KEYS.income, []);
     writeJSON(KEYS.vaccinations, []);
+    this._afterWrite();
   },
 };
 
